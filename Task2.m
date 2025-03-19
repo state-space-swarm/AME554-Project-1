@@ -78,7 +78,71 @@ W = olae_weights(W, D);
 % Compute the CRP attitude description
 q = (S'*W*S)\(S'*W*D);
 
-BN_olae = 
+BN_olae = rod2dcm(q');
+
+%% Control, Drive to Identity
+
+I1 = 1500;
+I2 = 1000;
+I3 = 800;
+
+% Construct the inertia matrix
+I = diag([I1 I2 I3]);
+
+t0 = 0;
+tf = 120;
+
+% Equations of Motion
+% I_c*w_dot = -w_skew*I_c*w + L_c
+% x_dot = A*x + B*u
+
+% This stuff is a start...
+% % Initial conditions
+% w0 = [0.1; 0.1; 0.1]; % Initial angular velocity
+% q0 = [0.1; 0.1; 0.1]; % Initial CRP
+
+% % Desired final conditions
+% wf = [0; 0; 0]; % Final angular velocity
+% qf = [0; 0; 0]; % Final CRP (identity attitude)
+
+% % Time vector
+% tspan = [t0 tf];
+
+% % State vector [w; q]
+% x0 = [w0; q0];
+
+% % Control input (assuming zero external torque for simplicity)
+% u = @(t) [0; 0; 0];
+
+% % Equations of motion
+% A = [zeros(3), eye(3); zeros(3), -inv(I)];
+% B = [zeros(3); inv(I)];
+
+% % Define the ODE function
+% odefun = @(t, x) A*x + B*u(t);
+
+% % Solve the ODE
+% [t, x] = ode45(odefun, tspan, x0);
+
+% % Extract the results
+% w = x(:, 1:3);
+% q = x(:, 4:6);
+
+% % Plot the results
+% figure;
+% subplot(2,1,1);
+% plot(t, w);
+% title('Angular Velocity');
+% xlabel('Time (s)');
+% ylabel('Angular Velocity (rad/s)');
+% legend('w1', 'w2', 'w3');
+
+% subplot(2,1,2);
+% plot(t, q);
+% title('Classical Rodriguez Parameters');
+% xlabel('Time (s)');
+% ylabel('CRP');
+% legend('q1', 'q2', 'q3');
 
 
 function TT = triad_Tframe(v1,v2)

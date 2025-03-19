@@ -13,6 +13,9 @@
 % Problem 3.39c
 % Using the first 3 sensor measurements, determine the attitude using the OLAE method
 
+% Optimal Rest to Rest Maneuver
+% Drive to identity using 3 sequential single axis maneuvers
+
 %% Problem Statement
 
 v1_b = [0.8273 0.5541 -0.0920]';
@@ -71,7 +74,7 @@ D = D(:);
 
 [S, D] = olaeSD(S, D);
 
-% Constrtuct the Weights matrix
+% Construct the Weights matrix
 W = [2 1 1];
 W = olae_weights(W, D);
 
@@ -79,6 +82,8 @@ W = olae_weights(W, D);
 q = (S'*W*S)\(S'*W*D);
 
 BN_olae = rod2dcm(q');
+[EA1, EA2, EA3] = dcm2angle(BN_olae); % Z angle, Y angle, X angle
+EA = fliplr([EA1 EA2 EA3]); % X angle, Y angle, Z angle
 
 %% Control, Drive to Identity
 
@@ -88,62 +93,22 @@ I3 = 800;
 
 % Construct the inertia matrix
 I = diag([I1 I2 I3]);
+I_vec = [I1 I2 I3];
 
-t0 = 0;
-tf = 120;
+tspace = [0 40 80 120];
 
-% Equations of Motion
-% I_c*w_dot = -w_skew*I_c*w + L_c
-% x_dot = A*x + B*u
+% Initialize maneuver array
 
-% This stuff is a start...
-% % Initial conditions
-% w0 = [0.1; 0.1; 0.1]; % Initial angular velocity
-% q0 = [0.1; 0.1; 0.1]; % Initial CRP
+u_coeffs = zeros(3,4);
 
-% % Desired final conditions
-% wf = [0; 0; 0]; % Final angular velocity
-% qf = [0; 0; 0]; % Final CRP (identity attitude)
+for i = 1:3
 
-% % Time vector
-% tspan = [t0 tf];
+    [a1, a2, a3, a4] = opt1axis(0, EA(i), tspace(i), tspace(i+1));
+    u_coeffs(i,:) = [a1 a2 a3 a4];
 
-% % State vector [w; q]
-% x0 = [w0; q0];
+end
 
-% % Control input (assuming zero external torque for simplicity)
-% u = @(t) [0; 0; 0];
-
-% % Equations of motion
-% A = [zeros(3), eye(3); zeros(3), -inv(I)];
-% B = [zeros(3); inv(I)];
-
-% % Define the ODE function
-% odefun = @(t, x) A*x + B*u(t);
-
-% % Solve the ODE
-% [t, x] = ode45(odefun, tspan, x0);
-
-% % Extract the results
-% w = x(:, 1:3);
-% q = x(:, 4:6);
-
-% % Plot the results
-% figure;
-% subplot(2,1,1);
-% plot(t, w);
-% title('Angular Velocity');
-% xlabel('Time (s)');
-% ylabel('Angular Velocity (rad/s)');
-% legend('w1', 'w2', 'w3');
-
-% subplot(2,1,2);
-% plot(t, q);
-% title('Classical Rodriguez Parameters');
-% xlabel('Time (s)');
-% ylabel('CRP');
-% legend('q1', 'q2', 'q3');
-
+% Compute EA time history based on a 1-2-3 maneuver, undoing a 3-2-1 set of EA's
 
 function TT = triad_Tframe(v1,v2)
 
@@ -199,3 +164,31 @@ function W = olae_weights(ww, dd)
     end
 
 end
+
+function [a1, a2, a3, a4] = opt1axis(theta0, thetaf, t0, tf)
+
+    dt = tf-t0;
+
+    a1 = theta0;
+    a2 = 0;
+    a3 = 3*(thetaf-theta0)/dt^2;
+    a4 = -2*(thetaf-theta0)/dt^3;
+
+end
+
+function ut = u_nominal(tspan, u_coeffs, time)
+
+    if time <= tspace(2)
+        ut = polyval(fliplr(u_coeffs(1,:)), time);
+    elseif time <= tspace(3)
+        ut = polyval(fliplr(u_coeffs(2,:)), time - tspace(2));
+    else
+        ut = polyval(fliplr(u_coeffs(3,:)), time - tspace(3));
+    end
+
+end
+
+function dEAdt = dEA(tspan, u_coeffs, time)
+
+    ut = u_nominal(tspan, u_coeffs, time);
+

@@ -87,7 +87,7 @@ BN_olae = rod2dcm(q');
 [EA1, EA2, EA3] = dcm2angle(BN_olae); % Z angle, Y angle, X angle
 EA = fliplr([EA1 EA2 EA3]); % X angle, Y angle, Z angle
 
-%% Control, Drive to Identity
+%% Optimal Rest to Rest Maneuver
 
 I1 = 1500;
 I2 = 1000;
@@ -117,14 +117,42 @@ eom_OL = @(t, state) dOL(tspace, u_coeffs, t, state);
 tspan = [0 120];
 state0 = [EA1 EA2 EA3 0 0 0]';
 
-tol = 1e-8;
+tol = 1e-9;
 options = odeset('RelTol', tol, 'AbsTol', tol);
 
 [t, state] = ode45(eom_OL, tspan, state0, options);
 
-% Plot results
+% Compute the nominal trajectories using the theta_nominal function
+% theta_nominal_values = zeros(length(t), 3);
+% for idx = 1:length(t)
+%     theta_nominal_values(idx, :) = theta_nominal(tspace, u_coeffs, t(idx));
+% end
 
-figure;
+% figure;
+% hold on;
+% plot(t, theta_nominal_values, '--');
+% legend('Yaw', 'Pitch', 'Roll');
+% hold off;
+
+%% Closed Loop Control
+
+% Define the gains for the closed loop control
+kp = 100;
+kd = 2*sqrt(kp);
+k_pd = [kp kd];
+
+% Perturb the initial state vector using rng
+rng(0); % Seed for reproducibility
+perturbation = 0.01 * randn(size(state0));
+state0_perturbed = state0 + perturbation;
+
+eom_CL = @(t, state) dCL(tspace, u_coeffs, t, state, k_pd);
+
+[t_CL, state_CL] = ode15s(eom_CL, tspan, state0_perturbed, options);
+
+%% Plot results
+
+figure(1);
 subplot(2,1,1);
 plot(t, state(:,1:3));
 title('Euler Angles Time History');
@@ -223,6 +251,42 @@ function ut = u_nominal(tspace, u_coeffs, time)
 
 end
 
+function theta_ref = theta_nominal(tspace, u_coeffs, time)
+
+    if time <= tspace(2)
+        theta_ref = [0; 0; 1]*polyval(fliplr(u_coeffs(1,:)), time) ...
+            + [0; 1; 0]*polyval(fliplr(u_coeffs(2,:)), 0) ...
+            + [1; 0; 0]*polyval(fliplr(u_coeffs(3,:)), 0);
+    elseif time <= tspace(3)
+        theta_ref = [0; 1; 0]*polyval(fliplr(u_coeffs(2,:)), time - tspace(2)) ...
+            + [1; 0; 0]*polyval(fliplr(u_coeffs(3,:)), 0) ...
+            + [0; 0; 1]*polyval(fliplr(u_coeffs(1,:)), tspace(2));
+    else
+        theta_ref = [1; 0; 0]*polyval(fliplr(u_coeffs(3,:)), time - tspace(3)) ...
+            + [0; 1; 0]*polyval(fliplr(u_coeffs(2,:)), tspace(3) - tspace(2)) ...
+            + [0; 0; 1]*polyval(fliplr(u_coeffs(1,:)), tspace(2));
+    end
+
+end
+
+function theta_dot_ref = theta_dot_nominal(tspace, u_coeffs, time)
+
+    if time <= tspace(2)
+        theta_dot_ref = [0; 0; 1]*polyval(polyder(fliplr(u_coeffs(1,:))), time) ...
+            + [0; 1; 0]*polyval(polyder(fliplr(u_coeffs(2,:))), 0) ...
+            + [1; 0; 0]*polyval(polyder(fliplr(u_coeffs(3,:))), 0);
+    elseif time <= tspace(3)
+        theta_dot_ref = [0; 1; 0]*polyval(polyder(fliplr(u_coeffs(2,:))), time - tspace(2)) ...
+            + [1; 0; 0]*polyval(polyder(fliplr(u_coeffs(3,:))), 0) ...
+            + [0; 0; 1]*polyval(polyder(fliplr(u_coeffs(1,:))), tspace(2));
+    else
+        theta_dot_ref = [1; 0; 0]*polyval(polyder(fliplr(u_coeffs(3,:))), time - tspace(3)) ...
+            + [0; 1; 0]*polyval(polyder(fliplr(u_coeffs(2,:))), tspace(3) - tspace(2)) ...
+            + [0; 0; 1]*polyval(polyder(fliplr(u_coeffs(1,:))), tspace(2));
+    end
+
+end
+
 function dstate = dOL(tspace, u_coeffs, time, state)
 
     % This may be wonky, but the state is defined here as:
@@ -246,6 +310,50 @@ function dstate = dOL(tspace, u_coeffs, time, state)
                                  0 cos(roll)*cos(pitch) -sin(roll)*cos(pitch);
                                  cos(pitch) sin(roll)*sin(pitch) cos(roll)*sin(pitch)];
     B(4:6,:) = eye(3);
+
+    dstate = A*state + B*ut;
+
+end
+
+function dstate = dCL(tspace, u_coeffs, time, state, gains)
+
+    % This may be wonky, but the state is defined here as:
+    % state = [yaw pitch roll body3rate body2rate body1rate]'
+
+    % The only control input are the body axis rates
+
+    u_ref = u_nominal(tspace, u_coeffs, time);
+
+    angle_ref = theta_nominal(tspace, u_coeffs, time);
+    dangle_ref = theta_dot_nominal(tspace, u_coeffs, time);
+    % state_ref = [angle_ref; dangle_ref];
+
+    % I'm quite certain that the state and angular rate analytical solutions are correct...
+    % OK maybe not, maybe they are acting along the wrong state coordinates and I have to permute the vectors differently...
+
+    A = zeros(6,6);
+    B = zeros(6,3);
+
+    yaw = state(1);
+    pitch = state(2);
+    roll = state(3);
+    body3_rate = state(4);
+    body2_rate = state(5);
+    body1_rate = state(6);
+
+    A(1:3,4:6) = (1/cos(pitch))*[0 sin(roll) cos(roll);
+                                 0 cos(roll)*cos(pitch) -sin(roll)*cos(pitch);
+                                 cos(pitch) sin(roll)*sin(pitch) cos(roll)*sin(pitch)];
+    B(4:6,:) = eye(3);
+
+    % dstate_ref = A*state_ref + B*u_ref;
+    
+    kp = gains(1);
+    kd = gains(2);
+    ut = u_ref - kp*(state(1:3) - angle_ref) - kd*(state(4:6) - dangle_ref);
+    % ut = u_ref - kp*(state(1:3) - angle_ref);
+
+    % Assuming the reference input is correct, I expect this to be the correct form of a PD control law.
 
     dstate = A*state + B*ut;
 

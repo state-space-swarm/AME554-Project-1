@@ -16,6 +16,8 @@
 % Optimal Rest to Rest Maneuver
 % Drive to identity using 3 sequential single axis maneuvers
 
+clear; close all; clc;
+
 %% Problem Statement
 
 v1_b = [0.8273 0.5541 -0.0920]';
@@ -103,12 +105,45 @@ u_coeffs = zeros(3,4);
 
 for i = 1:3
 
-    [a1, a2, a3, a4] = opt1axis(0, EA(i), tspace(i), tspace(i+1));
+    [a1, a2, a3, a4] = opt1axis(EA(i), 0, tspace(i), tspace(i+1));
     u_coeffs(i,:) = [a1 a2 a3 a4];
 
 end
 
 % Compute EA time history based on a 1-2-3 maneuver, undoing a 3-2-1 set of EA's
+
+eom_OL = @(t, state) dOL(tspace, u_coeffs, t, state);
+
+tspan = [0 120];
+state0 = [EA1 EA2 EA3 0 0 0]';
+
+tol = 1e-8;
+options = odeset('RelTol', tol, 'AbsTol', tol);
+
+[t, state] = ode45(eom_OL, tspan, state0, options);
+
+% Plot results
+
+figure;
+subplot(2,1,1);
+plot(t, state(:,1:3));
+title('Euler Angles Time History');
+xlabel('Time (s)');
+ylabel('Angle (rad)');
+legend('Yaw', 'Pitch', 'Roll');
+
+% Compute the nominal control effort u(t) over the time span
+u_nominal_values = zeros(length(t), 3);
+for idx = 1:length(t)
+    u_nominal_values(idx, :) = u_nominal(tspace, u_coeffs, t(idx));
+end
+
+subplot(2,1,2);
+plot(t, u_nominal_values);
+title('Nominal Control Effort Time History');
+xlabel('Time (s)');
+ylabel('Control Effort');
+legend('u1', 'u2', 'u3');
 
 function TT = triad_Tframe(v1,v2)
 
@@ -176,19 +211,42 @@ function [a1, a2, a3, a4] = opt1axis(theta0, thetaf, t0, tf)
 
 end
 
-function ut = u_nominal(tspan, u_coeffs, time)
+function ut = u_nominal(tspace, u_coeffs, time)
 
     if time <= tspace(2)
-        ut = polyval(fliplr(u_coeffs(1,:)), time);
+        ut = [1; 0; 0]*polyval([6 2].*fliplr(u_coeffs(1,3:4)), time);
     elseif time <= tspace(3)
-        ut = polyval(fliplr(u_coeffs(2,:)), time - tspace(2));
+        ut = [0; 1; 0]*polyval([6 2].*fliplr(u_coeffs(2,3:4)), time - tspace(2));
     else
-        ut = polyval(fliplr(u_coeffs(3,:)), time - tspace(3));
+        ut = [0; 0; 1]*polyval([6 2].*fliplr(u_coeffs(3,3:4)), time - tspace(3));
     end
 
 end
 
-function dEAdt = dEA(tspan, u_coeffs, time)
+function dstate = dOL(tspace, u_coeffs, time, state)
 
-    ut = u_nominal(tspan, u_coeffs, time);
+    % This may be wonky, but the state is defined here as:
+    % state = [yaw pitch roll body3rate body2rate body1rate]'
 
+    % The only control input are the body axis rates
+
+    ut = u_nominal(tspace, u_coeffs, time);
+
+    A = zeros(6,6);
+    B = zeros(6,3);
+
+    yaw = state(1);
+    pitch = state(2);
+    roll = state(3);
+    body3_rate = state(4);
+    body2_rate = state(5);
+    body1_rate = state(6);
+
+    A(1:3,4:6) = (1/cos(pitch))*[0 sin(roll) cos(roll);
+                                 0 cos(roll)*cos(pitch) -sin(roll)*cos(pitch);
+                                 cos(pitch) sin(roll)*sin(pitch) cos(roll)*sin(pitch)];
+    B(4:6,:) = eye(3);
+
+    dstate = A*state + B*ut;
+
+end

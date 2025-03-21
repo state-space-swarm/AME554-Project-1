@@ -123,21 +123,34 @@ options = odeset('RelTol', tol, 'AbsTol', tol);
 [t, state] = ode45(eom_OL, tspan, state0, options);
 
 % Compute the nominal trajectories using the theta_nominal function
-% theta_nominal_values = zeros(length(t), 3);
-% for idx = 1:length(t)
-%     theta_nominal_values(idx, :) = theta_nominal(tspace, u_coeffs, t(idx));
-% end
+theta_nominal_values = zeros(length(t), 3);
+for idx = 1:length(t)
+    theta_nominal_values(idx, :) = theta_nominal(tspace, u_coeffs, t(idx));
+end
+% Compute the nominal body rates using the theta_dot_nominal function
+theta_dot_nominal_values = zeros(length(t), 3);
+for idx = 1:length(t)
+    theta_dot_nominal_values(idx, :) = theta_dot_nominal(tspace, u_coeffs, t(idx));
+end
 
-% figure;
-% hold on;
-% plot(t, theta_nominal_values, '--');
-% legend('Yaw', 'Pitch', 'Roll');
-% hold off;
+figure(3);
+hold on;
+plot(t, theta_dot_nominal_values, '--');
+legend('Yaw Rate', 'Pitch Rate', 'Roll Rate');
+hold off;
+
+figure(2);
+hold on;
+plot(t, theta_nominal_values, '--');
+legend('Yaw', 'Pitch', 'Roll');
+hold off;
+
+
 
 %% Closed Loop Control
 
 % Define the gains for the closed loop control
-kp = 100;
+kp = 1;
 kd = 2*sqrt(kp);
 k_pd = [kp kd];
 
@@ -146,9 +159,13 @@ rng(0); % Seed for reproducibility
 perturbation = 0.01 * randn(size(state0));
 state0_perturbed = state0 + perturbation;
 
+% Compute the OL trajectory from a perturbed initial state
+[t_p, state_p] = ode45(eom_OL, t, state0_perturbed, options);
+
 eom_CL = @(t, state) dCL(tspace, u_coeffs, t, state, k_pd);
 
-[t_CL, state_CL] = ode15s(eom_CL, tspan, state0_perturbed, options);
+[t_CL, state_CL] = ode45(eom_CL, tspan, state0_perturbed, options);
+% dCL(tspace, u_coeffs, 0, state0, k_pd)
 
 %% Plot results
 
@@ -254,17 +271,17 @@ end
 function theta_ref = theta_nominal(tspace, u_coeffs, time)
 
     if time <= tspace(2)
-        theta_ref = [0; 0; 1]*polyval(fliplr(u_coeffs(1,:)), time) ...
-            + [0; 1; 0]*polyval(fliplr(u_coeffs(2,:)), 0) ...
-            + [1; 0; 0]*polyval(fliplr(u_coeffs(3,:)), 0);
+        theta_ref = [0; 0; 1].*polyval(fliplr(u_coeffs(1,:)), time) ...
+            + [0; 1; 0].*polyval(fliplr(u_coeffs(2,:)), 0) ...
+            + [1; 0; 0].*polyval(fliplr(u_coeffs(3,:)), 0);
     elseif time <= tspace(3)
-        theta_ref = [0; 1; 0]*polyval(fliplr(u_coeffs(2,:)), time - tspace(2)) ...
-            + [1; 0; 0]*polyval(fliplr(u_coeffs(3,:)), 0) ...
-            + [0; 0; 1]*polyval(fliplr(u_coeffs(1,:)), tspace(2));
+        theta_ref = [0; 1; 0].*polyval(fliplr(u_coeffs(2,:)), time - tspace(2)) ...
+            + [1; 0; 0].*polyval(fliplr(u_coeffs(3,:)), 0) ...
+            + [0; 0; 1].*polyval(fliplr(u_coeffs(1,:)), tspace(2));
     else
-        theta_ref = [1; 0; 0]*polyval(fliplr(u_coeffs(3,:)), time - tspace(3)) ...
-            + [0; 1; 0]*polyval(fliplr(u_coeffs(2,:)), tspace(3) - tspace(2)) ...
-            + [0; 0; 1]*polyval(fliplr(u_coeffs(1,:)), tspace(2));
+        theta_ref = [1; 0; 0].*polyval(fliplr(u_coeffs(3,:)), time - tspace(3)) ...
+            + [0; 1; 0].*polyval(fliplr(u_coeffs(2,:)), tspace(3) - tspace(2)) ...
+            + [0; 0; 1].*polyval(fliplr(u_coeffs(1,:)), tspace(2));
     end
 
 end
@@ -272,17 +289,17 @@ end
 function theta_dot_ref = theta_dot_nominal(tspace, u_coeffs, time)
 
     if time <= tspace(2)
-        theta_dot_ref = [0; 0; 1]*polyval(polyder(fliplr(u_coeffs(1,:))), time) ...
+        theta_dot_ref = [1; 0; 0]*polyval(polyder(fliplr(u_coeffs(1,:))), time) ...
             + [0; 1; 0]*polyval(polyder(fliplr(u_coeffs(2,:))), 0) ...
-            + [1; 0; 0]*polyval(polyder(fliplr(u_coeffs(3,:))), 0);
+            + [0; 0; 1]*polyval(polyder(fliplr(u_coeffs(3,:))), 0);
     elseif time <= tspace(3)
         theta_dot_ref = [0; 1; 0]*polyval(polyder(fliplr(u_coeffs(2,:))), time - tspace(2)) ...
-            + [1; 0; 0]*polyval(polyder(fliplr(u_coeffs(3,:))), 0) ...
-            + [0; 0; 1]*polyval(polyder(fliplr(u_coeffs(1,:))), tspace(2));
+            + [0; 0; 1]*polyval(polyder(fliplr(u_coeffs(3,:))), 0) ...
+            + [1; 0; 0]*polyval(polyder(fliplr(u_coeffs(1,:))), tspace(2));
     else
-        theta_dot_ref = [1; 0; 0]*polyval(polyder(fliplr(u_coeffs(3,:))), time - tspace(3)) ...
+        theta_dot_ref = [0; 0; 1]*polyval(polyder(fliplr(u_coeffs(3,:))), time - tspace(3)) ...
             + [0; 1; 0]*polyval(polyder(fliplr(u_coeffs(2,:))), tspace(3) - tspace(2)) ...
-            + [0; 0; 1]*polyval(polyder(fliplr(u_coeffs(1,:))), tspace(2));
+            + [1; 0; 0]*polyval(polyder(fliplr(u_coeffs(1,:))), tspace(2));
     end
 
 end
@@ -350,8 +367,11 @@ function dstate = dCL(tspace, u_coeffs, time, state, gains)
     
     kp = gains(1);
     kd = gains(2);
-    ut = u_ref - kp*(state(1:3) - angle_ref) - kd*(state(4:6) - dangle_ref);
-    % ut = u_ref - kp*(state(1:3) - angle_ref);
+
+    dtheta = state(1:3) - angle_ref
+    dtheta_dot = state(4:6) - dangle_ref
+    % ut = u_ref - kp*(state(1:3) - angle_ref) - kd*(state(4:6) - dangle_ref);
+    ut = u_ref + kp*dtheta;
 
     % Assuming the reference input is correct, I expect this to be the correct form of a PD control law.
 

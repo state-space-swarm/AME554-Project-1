@@ -112,7 +112,7 @@ end
 
 % Compute EA time history based on a 1-2-3 maneuver, undoing a 3-2-1 set of EA's
 
-eom_OL = @(t, state) dOL(tspace, u_coeffs, t, state);
+eom_OL = @(t, state) dOL(tspace, u_coeffs, t, state, I);
 
 tspan = [0 120];
 % tspan = [0 10];
@@ -143,33 +143,35 @@ end
 
 %% Closed Loop Control
 
-% Define the gains for the closed loop control
-kp = 1.3e-3;
-kd = 2*sqrt(kp);
-k_pd = [kp kd];
+wn = 4.03e-2;
+
+kp = wn^2*I;
+kd = 2*I*wn;
+gains = zeros(3,3,2);
+gains(:,:,1) = kp; gains(:,:,2) = kd;
+
 
 % Perturb the initial state vector using rng
 rng(0); % Seed for reproducibility
-perturbation = 0.01 * randn(size(state0));
+perturbation = 0.05 * randn(size(state0));
 state0_perturbed = state0 + perturbation;
 state0_perturbed = [state0_perturbed; state0_perturbed];
 % state0_perturbed = [state0; state0];
 % state0_perturbed([4:6 10:12]) = 0;
 
-eom_CL = @(t, state) dCL(tspace, u_coeffs, t, state, k_pd);
+eom_CL = @(t, state) dCL(tspace, u_coeffs, t, state, gains, I);
 
 [t_CL, state_CL] = ode45(eom_CL, tspan, state0_perturbed, options);
-% dCL(tspace, u_coeffs, 0, state0, k_pd)
 error = norm(state(end,:) - state_CL(end, 1:6))
 
 % Compute the nominal control effort u(t) over the time span
 u_nominal_values = zeros(length(t), 3);
 for idx = 1:length(t)
-    u_nominal_values(idx, :) = u_nominal(tspace, u_coeffs, t(idx));
+    u_nominal_values(idx, :) = u_nominal(tspace, u_coeffs, t(idx), I);
 end
 
 % Compute the total control effort
-J = sum(I^2*1/2*trapz(t, u_nominal_values.^2)'); % Delete I^2 if you don't want to consider the inertia matrix
+J = sum(trapz(t, u_nominal_values.^2)); % Delete I^2 if you don't want to consider the inertia matrix
 
 disp(['Total Control Effort: ', num2str(J)]);
 
@@ -207,9 +209,9 @@ legend('Yaw', 'Pitch', 'Roll');
 % Compute the PD control input over the time span
 u_pd_values = zeros(length(t_CL), 3);
 for idx = 1:length(t_CL)
-    u_pd_values(idx, :) = u_nominal(tspace, u_coeffs, t_CL(idx))' ...
-        - kp * (state_CL(idx, 1:3) - theta_nominal(tspace, u_coeffs, t_CL(idx))') ...
-        - kd * (state_CL(idx, 4:6) - theta_dot_nominal(tspace, u_coeffs, t_CL(idx))');
+    u_pd_values(idx, :) = (u_nominal(tspace, u_coeffs, t_CL(idx), I) ...
+        - kp * (state_CL(idx, 1:3).' - theta_nominal(tspace, u_coeffs, t_CL(idx))) ...
+        - kd * (state_CL(idx, 4:6).' - theta_dot_nominal(tspace, u_coeffs, t_CL(idx))))';
 end
 
 subplot(2,1,2);
@@ -285,14 +287,14 @@ function [a1, a2, a3, a4] = opt1axis(theta0, thetaf, t0, tf)
 
 end
 
-function ut = u_nominal(tspace, u_coeffs, time)
+function ut = u_nominal(tspace, u_coeffs, time, Imat)
 
     if time <= tspace(2)
-        ut = [1; 0; 0]*polyval([6 2].*fliplr(u_coeffs(1,3:4)), time);
+        ut = Imat*[1; 0; 0]*polyval([6 2].*fliplr(u_coeffs(1,3:4)), time);
     elseif time <= tspace(3)
-        ut = [0; 1; 0]*polyval([6 2].*fliplr(u_coeffs(2,3:4)), time - tspace(2));
+        ut = Imat*[0; 1; 0]*polyval([6 2].*fliplr(u_coeffs(2,3:4)), time - tspace(2));
     else
-        ut = [0; 0; 1]*polyval([6 2].*fliplr(u_coeffs(3,3:4)), time - tspace(3));
+        ut = Imat*[0; 0; 1]*polyval([6 2].*fliplr(u_coeffs(3,3:4)), time - tspace(3));
     end
 
 end
@@ -333,14 +335,14 @@ function theta_dot_ref = theta_dot_nominal(tspace, u_coeffs, time)
 
 end
 
-function dstate = dOL(tspace, u_coeffs, time, state)
+function dstate = dOL(tspace, u_coeffs, time, state, Imat)
 
     % This may be wonky, but the state is defined here as:
     % state = [yaw pitch roll body3rate body2rate body1rate]'
 
     % The only control input are the body axis rates
 
-    ut = u_nominal(tspace, u_coeffs, time);
+    ut = u_nominal(tspace, u_coeffs, time, Imat);
 
     A = zeros(6,6);
     B = zeros(6,3);
@@ -355,20 +357,21 @@ function dstate = dOL(tspace, u_coeffs, time, state)
     A(1:3,4:6) = (1/cos(pitch))*[0 sin(roll) cos(roll);
                                  0 cos(roll)*cos(pitch) -sin(roll)*cos(pitch);
                                  cos(pitch) sin(roll)*sin(pitch) cos(roll)*sin(pitch)];
-    B(4:6,:) = eye(3);
+
+    B(4:6,:) = inv(Imat);
 
     dstate = A*state + B*ut;
 
 end
 
-function dstate2 = dCL(tspace, u_coeffs, time, state2, gains)
+function dstate2 = dCL(tspace, u_coeffs, time, state2, gains, Imat)
 
     % This may be wonky, but the state is defined here as:
     % state = [yaw pitch roll body3rate body2rate body1rate]'
 
     % The only control input are the body axis rates
 
-    u_ref = u_nominal(tspace, u_coeffs, time);
+    u_ref = u_nominal(tspace, u_coeffs, time, Imat);
 
     angle_ref = theta_nominal(tspace, u_coeffs, time);
     dangle_ref = theta_dot_nominal(tspace, u_coeffs, time);
@@ -393,21 +396,17 @@ function dstate2 = dCL(tspace, u_coeffs, time, state2, gains)
     A(1:3,4:6) = (1/cos(pitch))*[0 sin(roll) cos(roll);
                                  0 cos(roll)*cos(pitch) -sin(roll)*cos(pitch);
                                  cos(pitch) sin(roll)*sin(pitch) cos(roll)*sin(pitch)];
-    B(4:6,:) = eye(3);
-
-    % dstate_ref = A*state_ref + B*u_ref;
+    B(4:6,:) = inv(Imat);
     
-    kp = gains(1);
-    kd = gains(2);
+    kp = gains(:,:,1);
+    kd = gains(:,:,2);
 
-    % dtheta = state(1:3) - angle_ref
-    % dtheta_dot = state(4:6) - dangle_ref
     ut = u_ref - kp*(state(1:3) - angle_ref) - kd*(state(4:6) - dangle_ref);
 
     % Assuming the reference input is correct, I expect this to be the correct form of a PD control law.
 
     dstate = A*state + B*ut;
-    dstate_p = dOL(tspace, u_coeffs, time, state_p);
+    dstate_p = dOL(tspace, u_coeffs, time, state_p, Imat);
 
     dstate2 = [dstate; dstate_p];
 

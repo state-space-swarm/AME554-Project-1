@@ -134,24 +134,17 @@ for idx = 1:length(t)
     theta_dot_nominal_values(idx, :) = theta_dot_nominal(tspace, u_coeffs, t(idx));
 end
 
-figure(3);
-hold on;
-plot(t, theta_dot_nominal_values, '--');
-legend('Yaw Rate', 'Pitch Rate', 'Roll Rate');
-hold off;
-
-figure(2);
-hold on;
-plot(t, theta_nominal_values, '--');
-legend('Yaw', 'Pitch', 'Roll');
-hold off;
-
-
+% Compute the principle angle of the spacecraft attitude compared to identity
+dcms = angle2dcm(state(:,1), state(:,2), state(:,3));
+principal_angles = zeros(length(t), 1);
+for idx = 1:length(t)
+    principal_angles(idx) = prangle(dcms(:,:,idx), eye(3));
+end
 
 %% Closed Loop Control
 
 % Define the gains for the closed loop control
-kp = 1e-3;
+kp = 1.3e-3;
 kd = 2*sqrt(kp);
 k_pd = [kp kd];
 
@@ -163,14 +156,22 @@ state0_perturbed = [state0_perturbed; state0_perturbed];
 % state0_perturbed = [state0; state0];
 % state0_perturbed([4:6 10:12]) = 0;
 
-% Compute the OL trajectory from a perturbed initial state
-% [t_p, state_p] = ode45(eom_OL, t, state0_perturbed, options);
-
 eom_CL = @(t, state) dCL(tspace, u_coeffs, t, state, k_pd);
 
 [t_CL, state_CL] = ode45(eom_CL, tspan, state0_perturbed, options);
 % dCL(tspace, u_coeffs, 0, state0, k_pd)
 error = norm(state(end,:) - state_CL(end, 1:6))
+
+% Compute the nominal control effort u(t) over the time span
+u_nominal_values = zeros(length(t), 3);
+for idx = 1:length(t)
+    u_nominal_values(idx, :) = u_nominal(tspace, u_coeffs, t(idx));
+end
+
+% Compute the total control effort
+J = sum(I^2*1/2*trapz(t, u_nominal_values.^2)'); % Delete I^2 if you don't want to consider the inertia matrix
+
+disp(['Total Control Effort: ', num2str(J)]);
 
 %% Plot results
 
@@ -182,18 +183,18 @@ xlabel('Time (s)');
 ylabel('Angle (rad)');
 legend('Yaw', 'Pitch', 'Roll');
 
-% Compute the nominal control effort u(t) over the time span
-u_nominal_values = zeros(length(t), 3);
-for idx = 1:length(t)
-    u_nominal_values(idx, :) = u_nominal(tspace, u_coeffs, t(idx));
-end
-
 subplot(2,1,2);
 plot(t, u_nominal_values);
 title('Nominal Control Effort Time History');
 xlabel('Time (s)');
 ylabel('Control Effort');
-legend('u1', 'u2', 'u3');
+legend('u_1', 'u_2', 'u_3');
+
+figure(2);
+plot(t, principal_angles);
+title('Principal Angle Time History');
+xlabel('Time (s)');
+ylabel('Principal Angle (deg)');
 
 figure(4);
 subplot(2,1,1);
@@ -215,8 +216,8 @@ subplot(2,1,2);
 plot(t_CL, u_pd_values);
 title('Closed Loop PD Control Input Time History');
 xlabel('Time (s)');
-ylabel('Control Input');
-legend('u1', 'u2', 'u3');
+ylabel('PD Control Input');
+legend('u_1', 'u_2', 'u_3');
 
 function TT = triad_Tframe(v1,v2)
 

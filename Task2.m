@@ -143,21 +143,22 @@ end
 
 %% Closed Loop Control
 
-wn = 4.03e-2;
+% Perturb the initial state vector using rng
+rng(0); % Seed for reproducibility
+% perturbation = 0.05 * randn(size(state0));
+perturbation = [0.05 * randn(3,1); 0; 0; 0];
+state0_perturbed = state0 + perturbation;
+state0_perturbed = [state0_perturbed; state0_perturbed];
+% state0_perturbed = [state0; state0];
+% state0_perturbed([4:6 10:12]) = 0;
+
+% wn = 4.03e-2;
+wn = 0.0034;
 
 kp = wn^2*I;
 kd = 2*I*wn;
 gains = zeros(3,3,2);
 gains(:,:,1) = kp; gains(:,:,2) = kd;
-
-
-% Perturb the initial state vector using rng
-rng(0); % Seed for reproducibility
-perturbation = 0.05 * randn(size(state0));
-state0_perturbed = state0 + perturbation;
-state0_perturbed = [state0_perturbed; state0_perturbed];
-% state0_perturbed = [state0; state0];
-% state0_perturbed([4:6 10:12]) = 0;
 
 eom_CL = @(t, state) dCL(tspace, u_coeffs, t, state, gains, I);
 
@@ -171,7 +172,7 @@ for idx = 1:length(t)
 end
 
 % Compute the total control effort
-J = sum(trapz(t, u_nominal_values.^2)); % Delete I^2 if you don't want to consider the inertia matrix
+J = sum(trapz(t, u_nominal_values.^2));
 
 disp(['Total Control Effort: ', num2str(J)]);
 
@@ -293,8 +294,10 @@ function ut = u_nominal(tspace, u_coeffs, time, Imat)
         ut = Imat*[1; 0; 0]*polyval([6 2].*fliplr(u_coeffs(1,3:4)), time);
     elseif time <= tspace(3)
         ut = Imat*[0; 1; 0]*polyval([6 2].*fliplr(u_coeffs(2,3:4)), time - tspace(2));
-    else
+    elseif time <= tspace(4)
         ut = Imat*[0; 0; 1]*polyval([6 2].*fliplr(u_coeffs(3,3:4)), time - tspace(3));
+    else
+        ut = [0; 0; 0];
     end
 
 end
@@ -309,10 +312,12 @@ function theta_ref = theta_nominal(tspace, u_coeffs, time)
         theta_ref = [0; 1; 0].*polyval(fliplr(u_coeffs(2,:)), time - tspace(2)) ...
             + [1; 0; 0].*polyval(fliplr(u_coeffs(3,:)), 0) ...
             + [0; 0; 1].*polyval(fliplr(u_coeffs(1,:)), tspace(2));
-    else
+    elseif time <= tspace(4)
         theta_ref = [1; 0; 0].*polyval(fliplr(u_coeffs(3,:)), time - tspace(3)) ...
             + [0; 1; 0].*polyval(fliplr(u_coeffs(2,:)), tspace(3) - tspace(2)) ...
             + [0; 0; 1].*polyval(fliplr(u_coeffs(1,:)), tspace(2));
+    else
+        theta_ref = [0; 0; 0];
     end
 
 end
@@ -327,10 +332,12 @@ function theta_dot_ref = theta_dot_nominal(tspace, u_coeffs, time)
         theta_dot_ref = [0; 1; 0]*polyval(polyder(fliplr(u_coeffs(2,:))), time - tspace(2)) ...
             + [0; 0; 1]*polyval(polyder(fliplr(u_coeffs(3,:))), 0) ...
             + [1; 0; 0]*polyval(polyder(fliplr(u_coeffs(1,:))), tspace(2));
-    else
+    elseif time <= tspace(4)
         theta_dot_ref = [0; 0; 1]*polyval(polyder(fliplr(u_coeffs(3,:))), time - tspace(3)) ...
             + [0; 1; 0]*polyval(polyder(fliplr(u_coeffs(2,:))), tspace(3) - tspace(2)) ...
             + [1; 0; 0]*polyval(polyder(fliplr(u_coeffs(1,:))), tspace(2));
+    else
+        theta_dot_ref = [0; 0; 0];
     end
 
 end

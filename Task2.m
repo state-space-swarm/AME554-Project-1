@@ -144,7 +144,7 @@ end
 %% Closed Loop Control
 
 % Perturb the initial state vector using rng
-rng(0); % Seed for reproducibility
+% rng(0); % Seed for reproducibility
 % perturbation = 0.05 * randn(size(state0));
 perturbation = [0.05 * randn(3,1); 0; 0; 0];
 state0_perturbed = state0 + perturbation;
@@ -153,7 +153,8 @@ state0_perturbed = [state0_perturbed; state0_perturbed];
 % state0_perturbed([4:6 10:12]) = 0;
 
 % wn = 4.03e-2;
-wn = 0.0034;
+% wn = 5e-1;
+wn = 5e-1;
 
 kp = wn^2*I;
 kd = 2*I*wn;
@@ -408,7 +409,7 @@ function dstate2 = dCL(tspace, u_coeffs, time, state2, gains, Imat)
     kp = gains(:,:,1);
     kd = gains(:,:,2);
 
-    ut = u_ref - kp*(state(1:3) - angle_ref) - kd*(state(4:6) - dangle_ref);
+    ut = u_ref - kp*(state(3:-1:1) - angle_ref(3:-1:1)) - kd*(state(4:6) - dangle_ref);
 
     % Assuming the reference input is correct, I expect this to be the correct form of a PD control law.
 

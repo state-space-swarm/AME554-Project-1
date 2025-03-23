@@ -97,7 +97,18 @@ I3 = 800;
 I = diag([I1 I2 I3]);
 I_vec = [I1 I2 I3];
 
-tspace = [0 40 80 120];
+% tspace = [0 40 80 120];
+% tspace = [0 70 90 120];
+
+% Solve for optimal tspace values
+A = [-sqrt(EA2*I2/(EA3*I1)) 1 0;
+     0 -sqrt(EA1*I3/(EA2*I2)) 1;
+     1 1 1];
+
+B = [0; 0; 120];
+
+tvec = A\B;
+tspace = [0 cumsum(tvec')];
 
 % Initialize maneuver array
 
@@ -152,9 +163,9 @@ state0_perturbed = [state0_perturbed; state0_perturbed];
 % state0_perturbed = [state0; state0];
 % state0_perturbed([4:6 10:12]) = 0;
 
-% wn = 4.03e-2;
+% wn = 2e-1;
 % wn = 5e-1;
-wn = 5e-1;
+wn = 2e-1;
 
 kp = wn^2*I;
 kd = 2*I*wn;
@@ -380,6 +391,7 @@ function dstate2 = dCL(tspace, u_coeffs, time, state2, gains, Imat)
     % The only control input are the body axis rates
 
     u_ref = u_nominal(tspace, u_coeffs, time, Imat);
+    % u_ref = [0; 0; 0];
 
     angle_ref = theta_nominal(tspace, u_coeffs, time);
     dangle_ref = theta_dot_nominal(tspace, u_coeffs, time);

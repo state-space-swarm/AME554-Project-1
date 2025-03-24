@@ -87,6 +87,9 @@ BN_olae = rod2dcm(q');
 [EA1, EA2, EA3] = dcm2angle(BN_olae); % Z angle, Y angle, X angle
 EA = fliplr([EA1 EA2 EA3]); % X angle, Y angle, Z angle
 
+BN_12 = triad_attitude(v_body(:,1), v_body(:,2), v_inertial(:,1), v_inertial(:,2));
+principal_angle_olae = prangle(BN_olae, BN_12);
+
 %% Optimal Rest to Rest Maneuver
 
 I1 = 1500;
@@ -155,7 +158,7 @@ end
 %% Closed Loop Control
 
 % Perturb the initial state vector using rng
-% rng(0); % Seed for reproducibility
+rng(0); % Seed for reproducibility
 % perturbation = 0.05 * randn(size(state0));
 perturbation = [0.05 * randn(3,1); 0; 0; 0];
 state0_perturbed = state0 + perturbation;
@@ -183,8 +186,15 @@ for idx = 1:length(t)
     u_nominal_values(idx, :) = u_nominal(tspace, u_coeffs, t(idx), I);
 end
 
+% Compute the principal angle of the spacecraft attitude compared to identity
+dcms_CL = angle2dcm(state_CL(:,1), state_CL(:,2), state_CL(:,3));
+principal_angles_CL = zeros(length(t_CL), 1);
+for idx = 1:length(t_CL)
+    principal_angles_CL(idx) = prangle(dcms_CL(:,:,idx), eye(3));
+end
+
 % Compute the total control effort
-J = sum(trapz(t, u_nominal_values.^2));
+J = sum(trapz(t, u_nominal_values.^2))/2;
 
 disp(['Total Control Effort: ', num2str(J)]);
 
@@ -202,7 +212,7 @@ subplot(2,1,2);
 plot(t, u_nominal_values);
 title('Nominal Control Effort Time History');
 xlabel('Time (s)');
-ylabel('Control Effort');
+ylabel('Control Effort (N-m)');
 legend('u_1', 'u_2', 'u_3');
 
 figure(2);
@@ -211,7 +221,7 @@ title('Principal Angle Time History');
 xlabel('Time (s)');
 ylabel('Principal Angle (deg)');
 
-figure(4);
+figure(3);
 subplot(2,1,1);
 plot(t_CL, state_CL(:,1:3));
 title('Closed Loop Euler Angles Time History');
@@ -233,6 +243,35 @@ title('Closed Loop PD Control Input Time History');
 xlabel('Time (s)');
 ylabel('PD Control Input');
 legend('u_1', 'u_2', 'u_3');
+
+figure(4);
+subplot(2,2,1);
+plot(t, state(:,1), t_CL, state_CL(:,1));
+title('Perturbed vs Nominal Yaw Time History');
+xlabel('Time (s)');
+ylabel('Angle (rad)');
+legend('Nominal', 'Perturbed');
+
+subplot(2,2,2);
+plot(t, state(:,2), t_CL, state_CL(:,2));
+title('Perturbed vs Nominal Pitch Time History');
+xlabel('Time (s)');
+ylabel('Angle (rad)');
+legend('Nominal', 'Perturbed');
+
+subplot(2,2,3);
+plot(t, state(:,3), t_CL, state_CL(:,3));
+title('Perturbed vs Nominal Roll Time History');
+xlabel('Time (s)');
+ylabel('Angle (rad)');
+legend('Nominal', 'Perturbed');
+
+subplot(2,2,4);
+plot(t, principal_angles, t_CL, principal_angles_CL);
+title('Perturbed vs Nominal Principal Angle Time History');
+xlabel('Time (s)');
+ylabel('Principal Angle (deg)');
+legend('Nominal', 'Perturbed');
 
 function TT = triad_Tframe(v1,v2)
 

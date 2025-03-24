@@ -53,6 +53,23 @@ for i = 1:length(t1_range)
     end
 end
 
+% Identify the minimum point on the surface with t2 greater than t1
+min_cost = inf;
+min_t1 = 0;
+min_t2 = 0;
+
+for i = 1:length(t1_range)
+    for j = 1:length(t2_range)
+        if t2_range(j) > t1_range(i) && J_matrix(i, j) < min_cost && t2_range(j) < 120
+            min_cost = J_matrix(i, j);
+            min_t1 = t1_range(i);
+            min_t2 = t2_range(j);
+        end
+    end
+end
+
+fprintf('The minimum cost is %f at t1 = %f and t2 = %f\n', min_cost, min_t1, min_t2);
+
 % Plot the surface with log scale for the z coordinate
 [T1, T2] = meshgrid(t1_range, t2_range);
 figure;

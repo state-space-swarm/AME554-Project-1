@@ -273,6 +273,59 @@ xlabel('Time (s)');
 ylabel('Principal Angle (deg)');
 legend('Nominal', 'Perturbed');
 
+figure(5);
+t0s = linspace(-0.1, 0.1, 10);
+for idx = 1:length(t0s)
+    state0_perturbed = t0s(idx) .* [1 1 1 0 0 0]' + state0;
+    state0_perturbed = [state0_perturbed; state0_perturbed];
+    [t_CL, state_CL] = ode45(@(t, state) dCL(tspace, u_coeffs, t, state, gains, I), tspan, state0_perturbed, options);
+    principal_angles_CL = zeros(length(t_CL), 1);
+    for jdx = 1:length(t_CL)
+        principal_angles_CL(jdx) = prangle(angle2dcm(state_CL(jdx,1), state_CL(jdx,2), state_CL(jdx,3)), eye(3));
+    end
+
+    hold on
+
+    subplot(2,2,1);
+    plot(t_CL, state_CL(:,1), 'DisplayName', sprintf('\\delta = %0.2f', t0s(idx)));
+    title('Perturbed Yaw Time History');
+    xlabel('Time (s)');
+    ylabel('Angle (rad)');
+    legend
+
+    hold off
+    hold on
+
+    subplot(2,2,2);
+    plot(t_CL, state_CL(:,2), 'DisplayName', sprintf('\\delta = %0.2f', t0s(idx)));
+    title('Perturbed Pitch Time History');
+    xlabel('Time (s)');
+    ylabel('Angle (rad)');
+    legend
+
+    hold off
+    hold on
+
+    subplot(2,2,3);
+    plot(t_CL, state_CL(:,3), 'DisplayName', sprintf('\\delta = %0.2f', t0s(idx)));
+    title('Perturbed Roll Time History');
+    xlabel('Time (s)');
+    ylabel('Angle (rad)');
+    legend
+
+    hold off
+    hold on
+
+    subplot(2,2,4);
+    plot(t_CL, principal_angles_CL, 'DisplayName', sprintf('\\delta = %0.2f', t0s(idx)));
+    title('Perturbed Principal Angle Time History');
+    xlabel('Time (s)');
+    ylabel('Principal Angle (deg)');
+    legend
+
+    hold off
+end
+
 function TT = triad_Tframe(v1,v2)
 
     v1 = v1/norm(v1);

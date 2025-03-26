@@ -49,7 +49,7 @@ for i = 1:length(t1_range)
         
         % Compute the total control effort
         J = sum(trapz(tspan, u_nominal_values.^2));
-        J_matrix(i, j) = J;
+        J_matrix(i, j) = J/2;
     end
 end
 
@@ -70,15 +70,21 @@ end
 
 fprintf('The minimum cost is %f at t1 = %f and t2 = %f\n', min_cost, min_t1, min_t2);
 
-% Plot the surface with log scale for the z coordinate
+% Plot the contour with log scale for the z coordinate
 [T1, T2] = meshgrid(t1_range, t2_range);
 figure;
-surf(T1, T2, log(J_matrix'));
-xlabel('t1 (s)');
-ylabel('t2 (s)');
+contourf(T1, T2, log(J_matrix'), 20);
+xlabel('t_1 (s)');
+ylabel('t_2 (s)');
 zlabel('Log of Total Control Effort');
-title('Optimal tspace Vector Minimization');
+title('Optimal Maneuver Times vs Log of Total Control Effort');
 colorbar;
+hold on;
+
+% Plot the point with minimum cost
+plot(min_t1, min_t2, 'ro', 'MarkerSize', 10, 'LineWidth', 2);
+text(min_t1, min_t2, sprintf('  t_1: %0.2f, t_2: %0.2f', min_t1, min_t2), 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'right');
+hold off;
 
 function [a1, a2, a3, a4] = opt1axis(theta0, thetaf, t0, tf)
 
